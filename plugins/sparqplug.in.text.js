@@ -1,23 +1,27 @@
 sparqplug.in.text = {type:"in","title":"Text Query","description":"Standard SPARQL query environment.","icon":"&#xf040;","css":"sparqplug.in.text.css"};
-plugins['sparqplug-in-text'] = sparqplug.in.text;
+plugins['urn:sparqplug:sparqlenvironment.in.text:0.1'] = sparqplug.in.text;
 
-sparqplug.in.text.load = function () {
+sparqplug.in.text.load = function (selector) {
+	$(selector).addClass('sparqplug-in-text');
 	var textarea = $('<textarea />',{
-		id: 'sp-in-text-textarea'
+		class: 'sp-in-text-textarea'
 	});//.change(sparqplug.in.text.queryChanged);
-
-	$("#sparqplug-in-text").append(textarea);
+	$(selector).append(textarea);
 
 	var elements = {"SELECT":{'complete-before':'SELECT ','complete-after':'','class':'kw-main'},"LIMIT":{'complete-before':'LIMIT ','complete-after':'','class':'kw-main'},"WHERE":{'complete-before':'WHERE { \n  ','complete-after':'\n}','class':'kw-main'},"DISTINCT":{'class':'kw-submain','complete-before':'DISTINCT ','complete-after':''},"FILTER":{'complete-before':'FILTER ( ','complete-after':' )','class':'kw-main'},"FILTER-REGEX":{'complete-before':'FILTER regex( ?','complete-after':' , \'^regex\' , \'i\' )','class':'kw-main'}}
 	var terms = ["BASE","SELECT","ORDER BY","FROM","GRAPH","STR","isURI","PREFIX","CONSTRUCT","LIMIT","FROM NAMED","OPTIONAL","LANG","isIRI","DESCRIBE","OFFSET","WHERE","UNION","LANGMATCHES","isLITERAL","ASK","DISTINCT","FILTER","FILTER-REGEX","DATATYPE","REGEX","REDUCED","a","BOUND","true","sameTERM","false"];
 
-	var variables = Object.keys(environment.currentDataset().variables);
+	var variables = [];
+	var prefixes = [];
+	$.each(environment.currentDatasets(selector),function (index, dataset) {
+		variables.push(Object.keys(environment.getDatasetObject(dataset).variables));
+		prefixes.push(Object.keys(environment.getDatasetObject(dataset).prefixes));
+	});
 	variables.push("?subject");
 	variables.push("?verb");
 	variables.push("?object");
-	var prefixes = Object.keys(environment.currentDataset().prefixes);
 
-	$('#sp-in-text-textarea').textcomplete([
+	$(selector+' .sp-in-text-textarea').textcomplete([
 		{ // Prefixes
 	        match: /(?:^|\s)(\w+)$/im,
 	        search: function (term, callback) {
@@ -27,7 +31,7 @@ sparqplug.in.text.load = function () {
 	        },
 	        index: 0,
 	        replace: function (element) {
-				$('#sp-in-text-textarea').overlay().data('overlay').addTermAndColor(element,'prefix');
+				$('.sp-in-text-textarea').overlay().data('overlay').addTermAndColor(element,'prefix');
 				return element;
 	        },
 			 header: "Prefixes"
@@ -57,7 +61,7 @@ sparqplug.in.text.load = function () {
 	        },
 	        index: 0,
 	        replace: function (element) {
-				$('#sp-in-text-textarea').overlay().data('overlay').addTermAndColor(element,'verb');
+				$('.sp-in-text-textarea').overlay().data('overlay').addTermAndColor(element,'verb');
 				return element + " ";
 	        },
 			 header: "Variables"
@@ -65,24 +69,25 @@ sparqplug.in.text.load = function () {
 	]);
 
 	$.each(variables, function(index, value) {
-		$('#sp-in-text-textarea').overlay().data('overlay').addTermAndColor(value,'verb');
+		$(selector+' .sp-in-text-textarea').overlay().data('overlay').addTermAndColor(value,'verb');
 	});
 	$.each(prefixes, function(index, value) {
-		$('#sp-in-text-textarea').overlay().data('overlay').addTermAndColor(value,'prefix');
+		$(selector+' .sp-in-text-textarea').overlay().data('overlay').addTermAndColor(value,'prefix');
 	});
 	$.each(elements, function(key, value) {
-		$('#sp-in-text-textarea').overlay().data('overlay').addTermAndColor(key,value.class);
+		$(selector+' .sp-in-text-textarea').overlay().data('overlay').addTermAndColor(key,value.class);
 	});
-	$('#sp-in-text-textarea').data('alting',false);
-	$('#sp-in-text-textarea').keydown(function(e) {
+	$(selector+' .sp-in-text-textarea').data('alting',false);
+	$(selector+' .sp-in-text-textarea').data('selector',selector);
+	$(selector+' .sp-in-text-textarea').keydown(function(e) {
 		console.log('keydown : '+e.keyCode);
 		if (e.keyCode == 18) {
 			$(this).data('alting',true);
 		} else if ($(this).data('alting') == true && e.keyCode == 13) { //R?
-			sparqplug.in.text.queryChanged();
+			sparqplug.in.text.queryChanged($(this).data('selector'));
 		}
 	});
-	$('#sp-in-text-textarea').keyup(function(e) {
+	$(selector+' .sp-in-text-textarea').keyup(function(e) {
 		if (e.keyCode == 18) {
 			$(this).data('alting',false);
 		}
@@ -91,32 +96,32 @@ sparqplug.in.text.load = function () {
 	var run_button = $('<a />',{
 		id: 'sp-in-text-run',
 		class:'icons'
-	}).append("&#xf04b;").click(function () {sparqplug.in.text.queryChanged()});
+	}).append("&#xf04b;").click(function () {sparqplug.in.text.queryChanged($(this).parent().data('selector'))});
 
-	$('#sp-in-text-textarea').parent().append(run_button);
-
+	$(selector).append(run_button);
+	$(selector).data('selector',selector);
 	//self.loadDetailView();
 }
 
-sparqplug.in.text.error = function (error) {
+sparqplug.in.text.error = function (error,selector) {
 	//alert('There was an Error!');
 }
 
-sparqplug.in.text.updateUI = function () {
+sparqplug.in.text.updateUI = function (selector) {
 	console.log("updateUI in.text");
-	$('#sp-in-text-textarea').val(environment.latestQuery);
-	$('#sp-in-text-textarea').trigger('change');
+	$(selector+' .sp-in-text-textarea').val(environment.latestQuery);
+	$(selector+' .sp-in-text-textarea').trigger('change');
 }
 
-sparqplug.in.text.sparqit = function () {
-	return $('#sp-in-text-textarea').val();
+sparqplug.in.text.sparqit = function (selector) {
+	return $(selector+' .sp-in-text-textarea').val();
 }
 
 //Plugin Specific
 
-sparqplug.in.text.queryChanged = function () {
-	var query = $('#sp-in-text-textarea').val();
-	environment.performQuery(query);
+sparqplug.in.text.queryChanged = function (selector) {
+	var query = $(selector+' .sp-in-text-textarea').val();
+	environment.performQuery(query, selector);
 }
 
 sparqplug.in.text.loadDetailView = function () {

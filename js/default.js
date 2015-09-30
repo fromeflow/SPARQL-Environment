@@ -1,15 +1,18 @@
+// Documentation generated with jsdoc https://github.com/jsdoc3/jsdoc
+
 $(document).ready(function (){
 	environment.load();
-	environment.displayConfigs();
-	environment.setupMinimizing();
-	environment.loadImportMethods();
 
-	environment.setupShortCuts();
 });
 
 // Local Storage loading and saving.
 
 var environment = {};
+
+// Defaults
+environment.latestQuery = [];
+environment.latestResults = [];
+environment.currentView = "";
 
 var sparqplug = {};
 sparqplug.configKey = 'sparql.config';
@@ -22,29 +25,55 @@ var plugins = {};
 
 var localStorage = window.localStorage;
 
+/**
+ * Does the following:
+ * - Calls loadConfigurations then display configurations.
+ * - Sets up default current view from localStorage.
+ * - Calls bindEvents, setupMinimizing, loadImportMethods, setupShortCuts in that order.
+ */
 environment.load = function () {
-	if (localStorage[this.configKey] != null) {
-		this.config = JSON.parse(localStorage[this.configKey]);
-	} else {
-		this.config = {
-			datasets:{},
-			views:{}
-		};
-	}
+
+	environment.loadConfigurations();
+
 	if (localStorage[this.currentViewKey] != null) {
 		this.currentView = localStorage[this.currentViewKey];
+	}
+
+	environment.bindEvents();
+	environment.setupMinimizing();
+	environment.loadImportMethods();
+	environment.setupShortCuts();
+}
+
+/**
+ * Loads configurations for the environment from a configuration json file on the file system. *Overwrite this function to take advantage of a REST API or implement a custom configuration storage protocol.*
+ * In order handle asynchronous loading the function must call didLoadConfiguration() for success or failure.
+ */
+environment.loadConfigurations = function () {
+	$.ajax({
+		'url':'configuration.json',
+		'method':'GET',
+		'dataType':'json',
+		success:function (data) {
+			environment.config = data;
+			environment.didLoadConfigurations(true);
+		},
+		failure: function (event) {
+			environment.didLoadConfigurations(false);
+		}
+	})
+}
+
+/**
+ * Called upon completion of setting environment.config or called upon failure.
+ * @param {Bool} success Was loading the configurations successful.
+ */
+environment.didLoadConfigurations = function (success) {
+	if (success) {
+		environment.displayConfigurations();
 	} else {
-		this.currentView = "";
+		alert('Could not load the configurations for this environment.');
 	}
-
-	environment.latestQuery = "";
-	environment.latestResults = {};
-
-	if (this.currentView != null && this.currentView != "") {
-		this.loadView(this.currentView);
-	}
-
-	this.bindToEvent('performedQuery', this.updateVisiblePlugins);
 }
 
 environment.save = function () {
@@ -62,6 +91,10 @@ environment.save = function () {
 environment.bindingAgents = {};
 environment.bindingAgents.performedQuery = [];
 environment.bindingAgents.selectedObject = [];
+
+environment.bindEvents = function () {
+	this.bindToEvent('performedQuery', this.updateVisiblePlugins);
+}
 
 environment.bindToEvent = function (event, callback, data) {
 	this.bindingAgents[event].push({
@@ -185,7 +218,7 @@ environment.importDatasetJSON = function (json) {
 	this.currentView = new_config.name;
 	this.save();
 
-	this.displayConfigs();
+	this.displayConfigurations();
 	this.loadView(this.currentView);
 
 	$('#import-dataset-button').trigger('click');
@@ -201,7 +234,7 @@ environment.importViewJSON = function (json) {
 	this.currentView = new_config.name;
 	this.save();
 
-	this.displayConfigs();
+	this.displayConfigurations();
 	this.loadView(this.currentView);
 
 	$('#import-view-button').trigger('click');
@@ -246,7 +279,7 @@ environment.createBlankView = function () {
 	environment.editDataset("New Dataset");
 }
 
-environment.displayConfigs = function () {
+environment.displayConfigurations = function () {
 	console.log('load configs: '+this.config);
 	$("#configs .panel-list ul").empty();
 
@@ -322,10 +355,50 @@ environment.displayConfigs = function () {
 }
 
 // Configs
-
+/**
+ * First the function clears the workspace, then it loads the view's plugins to the workspace.
+ * @param {string} view Unique name of the view to be loaded.
+ */
 environment.loadView = function (view) {
 
-	this.currentInPlugin = null;
+	this.clearWorkspace();
+
+	if (view != "") {
+		var viewConfig = environment.getViewObject(view);
+
+		// Input panels
+		var number_of_panels = viewConfig.plugins.input.length;
+		$.each(viewConfig.plugins.input,function (index,panel_config) {
+			panelID = 'input-panel-'+index;
+			$panel = $('<div />',{
+				'class':'input-panel panel',
+				'id':panelID
+			}).data('index',index);
+			$panel.css('width',(100/number_of_panels)+'%');
+
+			$('#data-input').append($panel);
+			$('#'+panelID).html('<div class="panel-menu"><div class="panel-menu-tabs"></div>'+
+				'<a class="icons panel-menu-tools" title="SparqIt" href="">&#xf045;</a><a class="icons panel-menu-tools" title="Save Query" href="">&#xf0c7;</a>'+
+			'</div><div class="panel-plugins"></div>');
+			$.each(panel_config.plugins, function (index, pluginURN) {
+				environment.loadPlugin(pluginURN,'#'+panelID);
+			});
+		});
+
+		// Output panels
+		$.each(viewConfig.plugins.output,function (index,pluginURN) {
+			environment.loadPlugin(pluginURN,'#output-panel');
+		});
+
+		this.currentView = view;
+
+		$('#menu-configs .name').html(this.currentView);
+	}
+
+}
+
+environment.clearWorkspace = function () {
+	this.currentInPlugins = [];
 	this.currentOutPlugin = null;
 
 	$('#inputs').children().remove();
@@ -339,19 +412,19 @@ environment.loadView = function (view) {
 	$('#details').children().remove();
 
 	$('#detail .panel-menu-tabs').children().remove();
-
-	if (view != "") {
-		$.each(environment.config['views'][view].plugins,function (index,value) {
-			environment.loadPlugin(value);
-		});
-
-		this.currentView = view;
-
-		$('#menu-configs .name').html(this.currentView);
-	}
-
 }
 
+/**
+ * Gets view the object from ```environment.config```.
+ * @param {string} view Unique name of the view being retrieved.
+ */
+environment.getViewObject = function (view) {
+	for (var index in this.config.views) {
+		if (this.config.views[index].name == view) {
+			return this.config.views[index];
+		}
+	}
+}
 
 environment.loadStandAloneDataset = function (configURL) {
 	this.importConfigFromURL(configURL);
@@ -415,7 +488,7 @@ environment.saveDataset = function () {
 
 	this.save();
 	this.load();
-	this.displayConfigs();
+	this.displayConfigurations();
 	this.loadDataset(dataset);
 
 	this.editor.close();
@@ -430,7 +503,7 @@ environment.deleteDataset = function () {
 
 	this.save();
 	this.load();
-	this.displayConfigs();
+	this.displayConfigurations();
 	this.loadDataset("");
 
 	this.editor.close();
@@ -460,86 +533,103 @@ environment.editor.close = function () {
 
 environment.pluginBaseURL = '';
 
-environment.loadPlugin = function (plugin) { // sparqplug.in.objectbased
+/**
+ * First it loads the resources needed for the plugin *(calling environment.resolver.resolvePluginURN(urn))*. Loads the plugin into a panel in the workspace.
+ * @param {string} URN for the plugin.
+ * @param {string} ID of the panel where the plugin should be loaded into.
+ */
+
+environment.loadPlugin = function (plugin, panel) { // sparqplug.in.objectbased
 	console.log('Loading SparqPlug: '+plugin);
 
-	$.getScript(this.pluginBaseURL+'plugins/'+plugin.replace(/\-/g,'.')+'.js', function( data, textStatus, jqxhr ) {
-		console.log('Loaded JS for Plugin: '+plugin);
+	this.resolver.resolvePluginURN(plugin,function (success) {
+		var pluginClass = environment.sanitizeURNForClassName(plugin);
+
 		new_plugin = $("<div/>",{
-			id: plugin,
-			class: 'plugin-'+plugins[plugin].type
-		});
+			class: plugin+' plugin plugin-'+plugins[plugin].type
+		}).data('urn',plugin);
 		new_tab = $("<a/>",{
-			id: plugin+'-tab',
+			class: plugin+'-tab',
 			title: plugins[plugin].description,
-			href:"javascript:environment.viewPlugin('"+plugin+"')"
-		});
+			click:function () {
+				var pluginClass = environment.sanitizeURNForClassName($(this).data('urn'));
+				environment.viewPlugin($(this).parent().data('panel')+' .'+pluginClass);
+			}
+		}).data('urn',plugin);
 		new_tab.append('<span class="icons">'+plugins[plugin].icon+'</span> '+plugins[plugin].title);
 
-		if (plugins[plugin].type == "in") {
-			$('#inputs').append(new_plugin);
-			$('#data-input .panel-menu-tabs').append(new_tab);
-			if (environment.currentInPlugin == null) {
-				environment.viewPlugin(plugin);
-			}
-		} else if (plugins[plugin].type == "out") {
-			$('#outputs').append(new_plugin);
-			$('#data-output .panel-menu-tabs').append(new_tab);
-			if (environment.currentOutPlugin == null) {
-				environment.viewPlugin(plugin);
-			}
-		} else if (plugins[plugin].type == "detail") {
-			$('#details').append(new_plugin);
-			$('#detail .panel-menu-tabs').append(new_tab);
-			if (environment.currentDetailPlugin == null) {
-				environment.viewPlugin(plugin);
-			}
-		}
-		plugins[plugin].load();
+		$(panel+' .panel-plugins').append(new_plugin);
+		$(panel+' .panel-menu-tabs').append(new_tab);
+		$(panel+' .panel-menu-tabs').data('panel',panel);
 
-		if (plugins[plugin].css) {
-			$('<link/>', {
-			   rel: 'stylesheet',
-			   type: 'text/css',
-			   href: environment.pluginBaseURL+'plugins/'+plugins[plugin].css
-			}).appendTo('head');
-		}
+		plugins[plugin].load(panel+' .'+pluginClass);
 	});
 }
 
-environment.viewPlugin = function (plugin) {
+environment.sanitizeURNForClassName = function (urn) {
+	// Valid characters in a CSS identifier are:
+ // - the hyphen (U+002D)
+ // - a-z (U+0030 - U+0039)
+ // - A-Z (U+0041 - U+005A)
+ // - the underscore (U+005F)
+ // - 0-9 (U+0061 - U+007A)
+ // - ISO 10646 characters U+00A1 and higher
+ // We strip out any character not in the above list.
+ return urn.replace(/\./g,"\\.").replace(/\:/g,"\\:");
+}
+
+environment.viewPlugin = function (selector) {
 	//Switch views
-	$('#'+plugin).parent().prepend($('#'+plugin));
+	var panel_index = $(selector).parents('.panel').data('index');
+	$(selector).parent().prepend($(selector));
 
-	$('#'+plugin+"-tab").parent().children().removeClass('selected');
-	$('#'+plugin+"-tab").addClass('selected');
+	$(selector+"-tab").parent().children().removeClass('selected');
+	$(selector+"-tab").addClass('selected');
 
-	if (plugins[plugin].type == "in") {
-		this.currentInPlugin = plugin;
-		plugins[plugin].updateUI();
-	} else if (plugins[plugin].type == "out") {
-		this.currentOutPlugin = plugin;
-		plugins[plugin].updateUI();
-	} else if (plugins[plugin].type == "detail") {
-		this.currentDetailPlugin = plugin;
+	urn = $(selector).data('urn');
+
+	if (plugins[urn].type == "in") {
+		this.currentInPlugins[panel_index] = urn;
+		plugins[urn].updateUI(selector);
+	} else if (plugins[urn].type == "out") {
+		this.currentOutPlugin = urn;
+		plugins[urn].updateUI(selector);
+	} else if (plugins[urn].type == "detail") {
+		this.currentDetailPlugin = urn;
 	}
 }
 
 // Plugin Functions for Querying
 
-environment.currentDataset = function () {
-	return this.config.datasets[this.config.views[this.currentView].dataset];
+environment.currentDatasets = function (selector) {
+	var panel_index = $(selector).parents('.panel').data('index');
+	return this.getViewObject(this.currentView).plugins.input[panel_index].datasets;
 }
 
-environment.performQuery = function (query) {
-	console.log('Query: '+query);
-	var results = $(document).query(query,this.currentDataset());
-	if (results.error) {
-		plugins[this.currentInPlugin].error(results.response);
-		return;
+environment.getDatasetObject = function (dataset) {
+	for (var index in this.config.datasets) {
+		if (this.config.datasets[index].name == dataset) {
+			return this.config.datasets[index];
+		}
 	}
-	this.latestQuery = query;
-	this.latestResults = results;
+}
+
+environment.performQuery = function (query, selector) {
+	console.log('Query: '+query);
+	var panel_index = $(selector).parents('.panel').data('index');
+
+	var panel_results = [];
+	$.each(this.currentDatasets(selector), function (index, dataset) {
+		var results = $.query(query,environment.getDatasetObject(dataset));
+		if (results.error) {
+			plugins[$(selector).data('urn')].error(results,selector);
+			return;
+		}
+		panel_results.push({'results':results,'dataset':dataset});
+	});
+
+	environment.latestResults[panel_index] = panel_results;
+	environment.latestQuery[panel_index] = query;
 
 	this.addToHistory(query);
 
@@ -564,13 +654,13 @@ environment.silentQuery = function (query) {
 // History
 
 environment.addToHistory = function (query) {
-	this.config['views'][this.currentView].history.push(query);
-	this.save();
+	//this.config['views'][this.currentView].history.push(query);
+	//this.save();
 }
 
 environment.clearHistory = function () {
-	tthis.config['views'][this.currentView].history = [];
-	this.save();
+	//this.config['views'][this.currentView].history = [];
+	//this.save();
 }
 
 // Layout Functionality

@@ -14,8 +14,12 @@
 		<!-- Local Environment Files -->
 		<link rel="stylesheet" href="css/default.css" /> <!-- Default Theme -->
 		<script type="text/javascript" src="js/default.js"> </script>
+		<script type="text/javascript" src="js/resolver.js"> </script>
 		<script type="text/javascript" src="js/jquery.fullscreen.js"> </script>
 		<script type="text/javascript" src="js/jquery.sparql.js"> </script>
+
+		<!-- Temperorary Addition For Debuggin -->
+		<script type="text/javascript" src="plugins/sparqplug.out.table.js"> </script>
 
 	</head>
 	<body>
@@ -64,24 +68,17 @@
 			</div>
 			<div id="data-area">
 				<div id="data-input">
-					<div class="panel-menu">
 
-						<div class="panel-menu-tabs">
-						</div>
-						<a class="icons panel-menu-tools" title="SparqIt" href="">&#xf045;</a>
-						<a class="icons panel-menu-tools" title="Save Query" href="">&#xf0c7;</a>
-					</div>
-					<div id="inputs">
-
-					</div>
 				</div>
 				<div id="data-output">
-					<div class="panel-menu">
-						<div class="panel-menu-tabs">
+					<div id="output-panel" class="panel">
+						<div class="panel-menu">
+							<div class="panel-menu-tabs">
+							</div>
+							<a class="icons panel-menu-tools" title="SparqIt" href="">&#xf045;</a>
 						</div>
-						<a class="icons panel-menu-tools" title="SparqIt" href="">&#xf045;</a>
-					</div>
-					<div id="outputs">
+						<div class="panel-plugins">
+						</div>
 					</div>
 				</div>
 			</div>

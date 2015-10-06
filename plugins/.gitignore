@@ -1,5 +1,6 @@
 # White List Native Plugins
 *
+!README.md
 !.gitignore
 !sparqplug.detail.history.*
 !sparqplug.detail.object.*
@@ -7,3 +8,5 @@
 !sparqplug.out.json.*
 !sparqplug.out.table.*
 !jquery-jsonview.js
+!jquery.textoverlay.js
+!jquery.textcomplete.js

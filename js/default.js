@@ -7,21 +7,95 @@ $(document).ready(function (){
 
 // Local Storage loading and saving.
 
+/** @namespace */
 var environment = {};
 
 // Defaults
 environment.latestQuery = [];
 environment.latestResults = [];
 environment.currentView = "";
+environment.panelHTML = '<div class="panel-menu"><div class="panel-menu-tabs"></div>'+
+	'<a class="icons panel-menu-tools" title="SparqIt" href="">&#xf045;</a><a class="icons panel-menu-tools" title="Save Query" href="">&#xf0c7;</a>'+
+'</div><div class="panel-plugins"></div>';
 
+/** @namespace */
 var sparqplug = {};
-sparqplug.configKey = 'sparql.config';
-sparqplug.currentViewKey = 'sparql.currentView';
-sparqplug.in = {};
-sparqplug.out = {};
-sparqplug.detail = {};
+/** Object to contain any input plugins. */
+sparqplug.type = {
+	input:'input',
+	output:'output',
+	detail:'detail',
+	update:'update'
+}
+/** Default object for an input plugin. */
+sparqplug.default = {
+	"title":"Default Title",
+	"description":"Default description.",
+	"icon":"",
+	load:function () {
 
-var plugins = {};
+	}
+}
+sparqplug.input = {
+	updateUI:function () {
+	}
+}
+/** Default object for an output plugin. */
+sparqplug.output = {
+	updateUI:function () {
+	}
+}
+/** Default object for a detail plugin. */
+sparqplug.detail = {
+}
+/** Default object for an update plugin. */
+sparqplug.update = {
+}
+
+/**
+ * Method used to create new plugin objects.
+ * @param {string} type The
+ * @param {string} urn URN of the plugin.
+ * @param {object} object The object of the plugin containing all nessesary
+ * methods.
+ */
+
+sparqplug.create = function (type,urn,object) {
+	var plugin = $.extend({
+		type:type
+	},this.default,this[type],object);
+	environment.plugins.add(urn,plugin);
+}
+
+/**
+ * Function called from within a plugin function to get the plugin object.
+ * @param {object} context The jQuery DOM object for the plugin. Always *this*
+ * in a function called with the context set.
+ */
+
+sparqplug.get = function (context) {
+	return environment.plugins.get(context.data('urn'));
+}
+
+/** @namespace */
+environment.plugins = {
+	/**
+	 * Gets the plugin object for a given URN.
+	 * @param {urn} string URN of plugin.
+	 */
+	get:function (urn) {
+		return this.library[urn];
+	},
+	/**
+	 * Adds the plugin object to the list of plugins.
+	 * @param {urn} string URN of plugin.
+	 * @param {object} object Object containing all the functions neccessary for a plugin.
+	 */
+	add:function (urn, object) {
+		this.library[urn] = object;
+	},
+	library:[]
+};
 
 var localStorage = window.localStorage;
 
@@ -43,11 +117,16 @@ environment.load = function () {
 	environment.setupMinimizing();
 	environment.loadImportMethods();
 	environment.setupShortCuts();
+
+	environment.history.load();
 }
 
 /**
- * Loads configurations for the environment from a configuration json file on the file system. *Overwrite this function to take advantage of a REST API or implement a custom configuration storage protocol.*
- * In order handle asynchronous loading the function must call didLoadConfiguration() for success or failure.
+ * Loads configurations for the environment from a configuration json file on
+ * the file system. *Overwrite this function to take advantage of a REST API or
+ * implement a custom configuration storage protocol.*
+ * In order handle asynchronous loading the function must call
+ * didLoadConfiguration() for success or failure.
  */
 environment.loadConfigurations = function () {
 	$.ajax({
@@ -66,7 +145,7 @@ environment.loadConfigurations = function () {
 
 /**
  * Called upon completion of setting environment.config or called upon failure.
- * @param {Bool} success Was loading the configurations successful.
+ * @param {bool} success Was loading the configurations successful.
  */
 environment.didLoadConfigurations = function (success) {
 	if (success) {
@@ -80,21 +159,37 @@ environment.save = function () {
 	localStorage.setItem(this.configKey, JSON.stringify(this.config));
 	localStorage.setItem(this.currentViewKey, this.currentView);
 }
+
 // Environment Event Binding
 
-/*
-  Known events:
-	- performedQuery
-	- selectedObject
-*/
+/** @namespace
+ * @description Object containing all the events and arrays of callback functions and data.
+ * To add an event call *environment.bindToEvent()* with any event name. To
+ * trigger an event call *environment.triggerEvent()*
+ */
+environment.bindingAgents = {
+	/** Array of callback functions and data for the performed query event.  */
+	performedQuery: [],
+	/** Array of callback functions and data for selected object event.  */
+	selectedObject: []
+};
 
-environment.bindingAgents = {};
-environment.bindingAgents.performedQuery = [];
-environment.bindingAgents.selectedObject = [];
-
+/**
+ * Setup initial binded events.
+ * - performedQuery to environment.updateVisiblePlugins()
+ */
 environment.bindEvents = function () {
 	this.bindToEvent('performedQuery', this.updateVisiblePlugins);
 }
+
+/**
+ * Binds the callback function to trigger upon the given event and offers a data
+ * object to be sent to the callback function.
+ * @param {string} event Name of the event that should trigger the callback
+ * function.
+ * @param {function} callback Function called on event.
+ * @param {object} data Object sent along with the callback function.
+ */
 
 environment.bindToEvent = function (event, callback, data) {
 	this.bindingAgents[event].push({
@@ -102,6 +197,13 @@ environment.bindToEvent = function (event, callback, data) {
 		"data": data
 	});
 }
+
+/**
+ * Triggers the callback functions that have been bound to the event and passes
+ * the data object along to the callback function.
+ * @param {string} event Name of the event being triggered.
+ * @param {object} data Data being passed to the callback functions.
+ */
 
 environment.triggerEvent = function (event, data) {
 	$.each(this.bindingAgents[event], function (index, agent) {
@@ -372,22 +474,46 @@ environment.loadView = function (view) {
 			panelID = 'input-panel-'+index;
 			$panel = $('<div />',{
 				'class':'input-panel panel',
-				'id':panelID
+				'id':panelID,
+				html:environment.panelHTML
 			}).data('index',index);
 			$panel.css('width',(100/number_of_panels)+'%');
 
 			$('#data-input').append($panel);
-			$('#'+panelID).html('<div class="panel-menu"><div class="panel-menu-tabs"></div>'+
-				'<a class="icons panel-menu-tools" title="SparqIt" href="">&#xf045;</a><a class="icons panel-menu-tools" title="Save Query" href="">&#xf0c7;</a>'+
-			'</div><div class="panel-plugins"></div>');
+
 			$.each(panel_config.plugins, function (index, pluginURN) {
 				environment.loadPlugin(pluginURN,'#'+panelID);
+				if (index == 0) {
+					var pluginClass = environment.sanitizeURNForClassName(pluginURN);
+					$('#'+panelID+' .'+pluginClass+'-tab').trigger('click');
+				}
 			});
 		});
 
 		// Output panels
+		$('#data-output').append($('<div />',{
+			id:'output-panel',
+			html: environment.panelHTML
+		}));
 		$.each(viewConfig.plugins.output,function (index,pluginURN) {
 			environment.loadPlugin(pluginURN,'#output-panel');
+			if (index == 0) {
+				var pluginClass = environment.sanitizeURNForClassName(pluginURN);
+				$('#output-panel .'+pluginClass+'-tab').trigger('click');
+			}
+		});
+
+		// Detail panels
+		$('#detail').append($('<div />',{
+			id:'detail-panel',
+			html: environment.panelHTML
+		}));
+		$.each(viewConfig.plugins.detail,function (index,pluginURN) {
+			environment.loadPlugin(pluginURN,'#detail-panel');
+			if (index == 0) {
+				var pluginClass = environment.sanitizeURNForClassName(pluginURN);
+				$('#detail-panel .'+pluginClass+'-tab').trigger('click');
+			}
 		});
 
 		this.currentView = view;
@@ -401,17 +527,10 @@ environment.clearWorkspace = function () {
 	this.currentInPlugins = [];
 	this.currentOutPlugin = null;
 
-	$('#inputs').children().remove();
-	$("#data-input .panel-menu a").remove();
-	$('#data-input .panel-menu-tabs').children().remove();
+	$('#data-input').empty();
+	$('#data-output').empty();
+	$('#detail').empty();
 
-	$('#outputs').children().remove();
-	$("#data-output .panel-menu a").remove();
-	$('#data-output .panel-menu-tabs').children().remove();
-
-	$('#details').children().remove();
-
-	$('#detail .panel-menu-tabs').children().remove();
 }
 
 /**
@@ -544,27 +663,34 @@ environment.loadPlugin = function (plugin, panel) { // sparqplug.in.objectbased
 
 	this.resolver.resolvePluginURN(plugin,function (success) {
 		var pluginClass = environment.sanitizeURNForClassName(plugin);
+		var pluginObject = environment.plugins.get(plugin);
 
 		new_plugin = $("<div/>",{
-			class: plugin+' plugin plugin-'+plugins[plugin].type
+			class: plugin+' plugin plugin-'+pluginObject.type
 		}).data('urn',plugin);
 		new_tab = $("<a/>",{
 			class: plugin+'-tab',
-			title: plugins[plugin].description,
+			title: pluginObject.description,
 			click:function () {
 				var pluginClass = environment.sanitizeURNForClassName($(this).data('urn'));
 				environment.viewPlugin($(this).parent().data('panel')+' .'+pluginClass);
 			}
 		}).data('urn',plugin);
-		new_tab.append('<span class="icons">'+plugins[plugin].icon+'</span> '+plugins[plugin].title);
+		new_tab.append('<span class="icons">'+pluginObject.icon+'</span> '+pluginObject.title);
 
 		$(panel+' .panel-plugins').append(new_plugin);
 		$(panel+' .panel-menu-tabs').append(new_tab);
 		$(panel+' .panel-menu-tabs').data('panel',panel);
 
-		plugins[plugin].load(panel+' .'+pluginClass);
+		pluginObject.load.call($(panel+' .'+pluginClass));
 	});
 }
+
+/**
+ * Sanitize the plugin URN to be used as a class name.
+ * @param {string} urn Plugin URN to be sanitized.
+ * @return {string} Sanitized URN
+ */
 
 environment.sanitizeURNForClassName = function (urn) {
 	// Valid characters in a CSS identifier are:
@@ -578,6 +704,11 @@ environment.sanitizeURNForClassName = function (urn) {
  return urn.replace(/\./g,"\\.").replace(/\:/g,"\\:");
 }
 
+/**
+ * Called to display the plugin in its parent panel.
+ * @param {string} selector Selector for the DOM object for the plugin.
+ */
+
 environment.viewPlugin = function (selector) {
 	//Switch views
 	var panel_index = $(selector).parents('.panel').data('index');
@@ -588,23 +719,35 @@ environment.viewPlugin = function (selector) {
 
 	urn = $(selector).data('urn');
 
-	if (plugins[urn].type == "in") {
+	if (this.plugins.get(urn).type == sparqplug.type.input) {
 		this.currentInPlugins[panel_index] = urn;
-		plugins[urn].updateUI(selector);
-	} else if (plugins[urn].type == "out") {
+		this.plugins.get(urn).updateUI.call($(selector));
+	} else if (this.plugins.get(urn).type == sparqplug.type.output) {
 		this.currentOutPlugin = urn;
-		plugins[urn].updateUI(selector);
-	} else if (plugins[urn].type == "detail") {
+		this.plugins.get(urn).updateUI.call($(selector));
+	} else if (this.plugins.get(urn).type == sparqplug.type.detail) {
 		this.currentDetailPlugin = urn;
 	}
 }
 
 // Plugin Functions for Querying
 
-environment.currentDatasets = function (selector) {
-	var panel_index = $(selector).parents('.panel').data('index');
-	return this.getViewObject(this.currentView).plugins.input[panel_index].datasets;
+/**
+ * Gets the current datasets for the panel the plugin calling current datasets
+ * is in.
+ * @return {array} Array of names of the datasets for the panel.
+ */
+
+environment.currentDatasets = function () {
+	var panel_index = this.parents('.panel').data('index');
+	return environment.getViewObject(environment.currentView).plugins.input[panel_index].datasets;
 }
+
+/**
+ * Get the dataset object by name.
+ * @param {string} dataset The name of the dataset.
+ * @return {object} Dataset object.
+ */
 
 environment.getDatasetObject = function (dataset) {
 	for (var index in this.config.datasets) {
@@ -614,53 +757,59 @@ environment.getDatasetObject = function (dataset) {
 	}
 }
 
-environment.performQuery = function (query, selector) {
+/**
+ * Perform the given query on the datasets for the panel and runs updateUI for
+ * each of the output plugins.
+ * @param {string} query SPARQL query strings.
+ */
+
+environment.performQuery = function (query) {
 	console.log('Query: '+query);
-	var panel_index = $(selector).parents('.panel').data('index');
+	var panel_index = this.parents('.panel').data('index');
 
 	var panel_results = [];
-	$.each(this.currentDatasets(selector), function (index, dataset) {
+	var datasets = [];
+	var that = this;
+	$.each(environment.currentDatasets.call(this), function (index, dataset) {
 		var results = $.query(query,environment.getDatasetObject(dataset));
 		if (results.error) {
-			plugins[$(selector).data('urn')].error(results,selector);
+			environment.plugins.get(that.data('urn')).error.call(that,results);
 			return;
 		}
+		datasets.push(dataset);
 		panel_results.push({'results':results,'dataset':dataset});
 	});
 
 	environment.latestResults[panel_index] = panel_results;
 	environment.latestQuery[panel_index] = query;
 
-	this.addToHistory(query);
+	environment.history.add(query,datasets);
 
-	this.triggerEvent('performedQuery');
+	environment.triggerEvent('performedQuery');
 }
 
 environment.updateVisiblePlugins = function () {
-	plugins[environment.currentOutPlugin].updateUI();
-	plugins[environment.currentInPlugin].updateUI();
+	$.each(environment.currentInPlugins, function (panelIndex,plugin) {
+		environment.plugins.get(plugin).updateUI.call($('#input-panel-'+panelIndex+' .'+environment.sanitizeURNForClassName(plugin)));
+	});
+	environment.plugins.get(environment.currentOutPlugin).updateUI.call($('#output-panel .'+environment.sanitizeURNForClassName(environment.currentOutPlugin)));
 }
+
+/**
+ * Perform a query without calling the
+ * @param {string} query SPARQL query string.
+ * @return {object} Results object.
+ */
 
 environment.silentQuery = function (query) {
 	console.log('Query: '+query);
+	// TO-DO modify to handle multiple datasets.
 	var results = $(document).query(query,this.currentDataset());
 	if (results.error) {
 		plugins[this.currentInPlugin].error(results.response);
 		return;
 	}
 	return results;
-}
-
-// History
-
-environment.addToHistory = function (query) {
-	//this.config['views'][this.currentView].history.push(query);
-	//this.save();
-}
-
-environment.clearHistory = function () {
-	//this.config['views'][this.currentView].history = [];
-	//this.save();
 }
 
 // Layout Functionality

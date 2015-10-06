@@ -42,9 +42,11 @@
 }
 
 .sp-in-text-run {
-	position:absolute;
-	right:5px;
-	bottom:5px;
+	float: right;
+	margin-top: -20px;
+	cursor:pointer;
+	z-index: 10;
+	position: relative;
 }
 
 .syntax-verb {
